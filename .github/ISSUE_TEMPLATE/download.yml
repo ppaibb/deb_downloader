@@ -1,0 +1,36 @@
+name: 离线包下载申请 (Download Deb)
+description: 提交 Ubuntu 软件包及版本，GitHub Actions 将自动打包发布为 Release
+title: "[Download] "
+labels: ["download"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        欢迎使用 **deb_downloader**！
+        提交此 Issue 后，GitHub Actions 机器人将自动拉取干净的 Ubuntu 环境、分析依赖并打包，随后在评论中提供 Release 下载链接并自动结单。
+  - type: dropdown
+    id: ubuntu_version
+    attributes:
+      label: Ubuntu 版本 (Ubuntu Version)
+      description: 选择目标系统的 Ubuntu 版本
+      options:
+        - "22.04"
+        - "20.04"
+        - "24.04"
+        - "18.04"
+    validations:
+      required: true
+  - type: input
+    id: package_name
+    attributes:
+      label: 软件包名称 (Package Name)
+      description: 输入需要下载的目标软件名（支持单个或空格分隔的多个软件包）
+      placeholder: 例如: nginx 或 curl
+    validations:
+      required: true
+  - type: input
+    id: custom_dockerfile
+    attributes:
+      label: 自定义源/Dockerfile (可选)
+      description: 若需使用第三方专用源，可填写仓库内现有 Dockerfile（例如 Dockerfile_nginx）
+      placeholder: 例如: Dockerfile_nginx
