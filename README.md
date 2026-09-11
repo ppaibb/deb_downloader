@@ -2,25 +2,25 @@
 
 基于 Docker 容器隔离环境，一键离线下载指定 Ubuntu 版本的软件包及其全部依赖 .deb 并打包，便于在无网目标机器上完成离线安装。
 
-支持本地执行，亦支持通过 GitHub Actions 云端一键下载并自动发布到 GitHub Releases（任何人都可 Fork 本仓库开箱即用）。
+支持本地执行，亦支持通过 GitHub Actions 网页端一键在线打包并自动发布到 GitHub Releases（任何人都可 Fork 本仓库开箱即用）。
 
 ---
 
-## 云端一键下载（免本地环境）
+## 云端一键打包（GitHub Actions 免本地环境）
 
-无需在本地安装 Docker，直接借助 GitHub Actions 极速云端打包：
+无需在本地安装 Docker，直接在 GitHub 页面点击即可打包：
 
-### 方式 1：新建 Issue 自动触发（推荐）
-1. Fork 本仓库。
-2. 进入仓库的 **Issues** 页面，点击 **New Issue**。
-3. 选择 **离线包下载申请 (Download Deb)** 模板，选择 Ubuntu 版本并填入软件包名称，点击提交。
-4. GitHub Actions 将自动触发打包，并在 Issue 评论区自动回复下载直链及安装命令，随后自动结单。
-
-### 方式 2：Actions 页面手动触发
-1. 进入仓库的 **Actions** 标签页。
-2. 在左侧选择 **Download and Release Deb** 工作流。
-3. 点击右侧 **Run workflow** 下拉菜单，选择 Ubuntu 版本、输入软件包名，点击运行。
-4. 运行完成后，在仓库的 **Releases** 页面即可下载打包好的 `.tar.gz` 离线文件。
+1. **Fork 本仓库** 到自己的 GitHub 账号下。
+2. 进入仓库的 **Actions** 标签页。
+3. 在左侧列表点击 **Download and Release Deb**。
+4. 点击页面右侧的 **Run workflow** 按钮：
+   - **Ubuntu 版本**：下拉选择版本（如 22.04、20.04、24.04 等）。
+   - **软件包名称**：输入需要下载的软件名（例如 `nginx`、`curl` 或 `docker-ce`）。
+   - **自定义源/Dockerfile（可选）**：留空默认使用官方源；若需国内源加速可填 `Dockerfile.china`；特定软件源可填 `Dockerfile_nginx`。
+   - 点击绿色的 **Run workflow** 按钮启动任务。
+5. 任务运行完成后（通常约 1~2 分钟）：
+   - 点击该次运行的记录，在 **Summary** 页面即可直接点击直链下载。
+   - 或者直接前往仓库的 **Releases** 页面下载打包好的 `<package_name>-<ubuntu_version>.tar.gz` 文件。
 
 ---
 
@@ -68,8 +68,7 @@ cd /tmp/debs && sudo dpkg -i *.deb
 
 ## 文件说明
 
-- `.github/workflows/download.yml`：GitHub Actions 自动构建与 Release 发布工作流。
-- `.github/ISSUE_TEMPLATE/download.yml`：Issue 可视化下载申请表单模板。
+- `.github/workflows/download.yml`：GitHub Actions 手动一键构建与 Release 自动发布工作流。
 - `download.sh`：主执行脚本（自动构建镜像、下载依赖、打包并清理临时资源）。
 - `Dockerfile`：官方 Ubuntu 基础镜像配置。
 - `Dockerfile.china`：国内清华源加速配置（支持 Ubuntu 20.04 / 22.04 / 24.04）。

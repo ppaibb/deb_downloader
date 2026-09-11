@@ -14,98 +14,32 @@ on:
           - '24.04'
           - '18.04'
       package_name:
-        description: '软件包名称 (如 curl, nginx)'
+        description: '软件包名称 (如 curl, nginx, docker-ce)'
         required: true
+        type: string
       custom_dockerfile:
-        description: '自定义 Dockerfile (可选，如 Dockerfile_nginx)'
+        description: '使用的 Dockerfile / 源 (留空默认官方源，可选: Dockerfile.china, Dockerfile_nginx 等)'
         required: false
         default: ''
-  issues:
-    types: [opened]
+        type: string
 
 permissions:
   contents: write
-  issues: write
 
 jobs:
   build-and-release:
-    # 仅在手动触发 或 带有 download 标签/标题的 issue 打开时执行
-    if: >
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'issues' && (
-        contains(github.event.issue.title, '[download]') ||
-        contains(github.event.issue.title, '[Download]') ||
-        contains(github.event.issue.labels.*.name, 'download')
-      ))
     runs-on: ubuntu-latest
 
     steps:
       - name: 检出仓库代码
         uses: actions/checkout@v4
 
-      - name: 解析参数
-        id: parse_params
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          INPUT_UBUNTU_VER: ${{ github.event.inputs.ubuntu_version }}
-          INPUT_PACKAGE_NAME: ${{ github.event.inputs.package_name }}
-          INPUT_CUSTOM_DF: ${{ github.event.inputs.custom_dockerfile }}
-          ISSUE_TITLE: ${{ github.event.issue.title }}
-          ISSUE_BODY: ${{ github.event.issue.body }}
-        run: |
-          python3 -c "
-          import os, re
-
-          event = os.environ.get('EVENT_NAME')
-          if event == 'workflow_dispatch':
-              ver = os.environ.get('INPUT_UBUNTU_VER', '22.04').strip()
-              pkg = os.environ.get('INPUT_PACKAGE_NAME', '').strip()
-              df = os.environ.get('INPUT_CUSTOM_DF', '').strip()
-          else:
-              body = os.environ.get('ISSUE_BODY', '')
-              title = os.environ.get('ISSUE_TITLE', '')
-              ver = ''
-              pkg = ''
-              df = ''
-              
-              # 尝试从 Issue Form 正文中提取
-              ver_m = re.search(r'### Ubuntu 版本[^\n]*\n+([^\n#]+)', body)
-              pkg_m = re.search(r'### 软件包名称[^\n]*\n+([^\n#]+)', body)
-              df_m = re.search(r'### 自定义源/Dockerfile[^\n]*\n+([^\n#]+)', body)
-              
-              if ver_m and pkg_m:
-                  ver = ver_m.group(1).strip()
-                  pkg = pkg_m.group(1).strip()
-                  if df_m:
-                      df_val = df_m.group(1).strip()
-                      if df_val and '_No response_' not in df_val:
-                          df = df_val
-              else:
-                  # 从 Issue 标题提取，如: [Download] 22.04 nginx
-                  m = re.search(r'\[?[dD]ownload\]?\s+([0-9\.]+)\s+([^#\s]+)(?:\s+(.+))?', title)
-                  if m:
-                      ver = m.group(1).strip()
-                      pkg = m.group(2).strip()
-                      if m.group(3):
-                          df = m.group(3).strip()
-
-          if not ver or not pkg:
-              print('::error::无法解析有效的 Ubuntu 版本或软件包名称')
-              exit(1)
-
-          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
-              f.write(f'ubuntu_version={ver}\n')
-              f.write(f'package_name={pkg}\n')
-              f.write(f'custom_dockerfile={df}\n')
-          print(f'成功解析参数: Ubuntu={ver}, Package={pkg}, Dockerfile={df}')
-          "
-
       - name: 执行离线下载与依赖打包
         id: run_download
         env:
-          UBUNTU_VER: ${{ steps.parse_params.outputs.ubuntu_version }}
-          PACKAGE_NAME: ${{ steps.parse_params.outputs.package_name }}
-          CUSTOM_DF: ${{ steps.parse_params.outputs.custom_dockerfile }}
+          UBUNTU_VER: ${{ github.event.inputs.ubuntu_version }}
+          PACKAGE_NAME: ${{ github.event.inputs.package_name }}
+          CUSTOM_DF: ${{ github.event.inputs.custom_dockerfile }}
         run: |
           chmod +x download.sh
           if [ -n "${CUSTOM_DF}" ]; then
@@ -125,8 +59,8 @@ jobs:
         id: create_release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          UBUNTU_VER: ${{ steps.parse_params.outputs.ubuntu_version }}
-          PACKAGE_NAME: ${{ steps.parse_params.outputs.package_name }}
+          UBUNTU_VER: ${{ github.event.inputs.ubuntu_version }}
+          PACKAGE_NAME: ${{ github.event.inputs.package_name }}
           TAR_FILE: ${{ steps.run_download.outputs.tar_file }}
         run: |
           TAG_NAME="v_${PACKAGE_NAME}_${UBUNTU_VER//./_}_${{ github.run_number }}"
@@ -143,39 +77,15 @@ jobs:
           echo "release_url=${RELEASE_URL}" >> "$GITHUB_OUTPUT"
           echo "download_url=${DOWNLOAD_URL}" >> "$GITHUB_OUTPUT"
 
-      - name: 回复 Issue 并关闭
-        if: github.event_name == 'issues'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ISSUE_NUMBER: ${{ github.event.issue.number }}
-          UBUNTU_VER: ${{ steps.parse_params.outputs.ubuntu_version }}
-          PACKAGE_NAME: ${{ steps.parse_params.outputs.package_name }}
-          TAR_FILE: ${{ steps.run_download.outputs.tar_file }}
-          DOWNLOAD_URL: ${{ steps.create_release.outputs.download_url }}
-          RELEASE_URL: ${{ steps.create_release.outputs.release_url }}
-        run: |
-          COMMENT_BODY="### 🎉 软件包离线打包完成！
-
-- **软件包**: \`${PACKAGE_NAME}\`
-- **目标系统**: \`Ubuntu ${UBUNTU_VER}\`
-- **离线包下载直链**: [📥 点击直接下载 ${TAR_FILE}](${DOWNLOAD_URL})
-- **Release 页面**: [查看 Release 详情](${RELEASE_URL})
-
-#### 💻 目标机器安装方式:
-\`\`\`bash
-# 1. 下载并解压
-tar -zxvf ${TAR_FILE} -C /tmp/debs
-# 2. 批量安装
-cd /tmp/debs && sudo dpkg -i *.deb
-\`\`\`
-"
-          gh issue comment "${ISSUE_NUMBER}" --body "${COMMENT_BODY}"
-          gh issue close "${ISSUE_NUMBER}" --reason "completed"
-
-      - name: 打包失败时在 Issue 中反馈
-        if: failure() && github.event_name == 'issues'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ISSUE_NUMBER: ${{ github.event.issue.number }}
-        run: |
-          gh issue comment "${ISSUE_NUMBER}" --body "❌ **离线包构建失败**，请检查软件包名称是否存在，或查看 [Actions 执行日志](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}) 排查原因。"
+          # 写入 Actions 运行总结页面，方便直接点击下载
+          echo "### 软件包离线打包完成" >> $GITHUB_STEP_SUMMARY
+          echo "- **软件包**: \`${PACKAGE_NAME}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **目标系统**: \`Ubuntu ${UBUNTU_VER}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **下载直链**: [点击直接下载 ${TAR_FILE}](${DOWNLOAD_URL})" >> $GITHUB_STEP_SUMMARY
+          echo "- **Release 详情页**: [查看 Release](${RELEASE_URL})" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "#### 目标机器离线安装命令" >> $GITHUB_STEP_SUMMARY
+          echo '```bash' >> $GITHUB_STEP_SUMMARY
+          echo "mkdir -p /tmp/debs && tar -zxvf ${TAR_FILE} -C /tmp/debs" >> $GITHUB_STEP_SUMMARY
+          echo "cd /tmp/debs && sudo dpkg -i *.deb" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
