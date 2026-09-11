@@ -1,0 +1,35 @@
+ARG ubuntu_version=22.04
+
+FROM ubuntu:$ubuntu_version
+
+# 设置环境变量避免交互式安装
+ENV DEBIAN_FRONTEND=noninteractive
+
+# 更新包列表并安装必要的依赖包
+RUN apt-get update && apt-get install -y \
+    curl \
+    gnupg2 \
+    ca-certificates \
+    lsb-release \
+    ubuntu-keyring \
+    && rm -rf /var/lib/apt/lists/*
+
+# 导入nginx官方GPG签名密钥
+RUN curl https://nginx.org/keys/nginx_signing.key | gpg --dearmor \
+    | tee /usr/share/keyrings/nginx-archive-keyring.gpg >/dev/null
+RUN gpg --dry-run --quiet --no-keyring --import --import-options import-show /usr/share/keyrings/nginx-archive-keyring.gpg
+
+# 添加nginx官方APT仓库（动态适配 Ubuntu 代号，使用 subshell 避免 Docker 引擎提前展开为空）
+RUN echo "deb [signed-by=/usr/share/keyrings/nginx-archive-keyring.gpg] http://nginx.org/packages/ubuntu $(. /etc/os-release && echo $UBUNTU_CODENAME) nginx" \
+    | tee /etc/apt/sources.list.d/nginx.list
+
+# 设置APT pin优先级，确保优先使用nginx.org的包
+RUN { \
+      echo 'Package: *'; \
+      echo 'Pin: origin nginx.org'; \
+      echo 'Pin: release o=nginx'; \
+      echo 'Pin-Priority: 900'; \
+    } | tee /etc/apt/preferences.d/99nginx
+
+# 移除官方镜像自带的自动清理机制，确保 deb 缓存保留
+RUN rm -f /etc/apt/apt.conf.d/docker-clean && apt-get update

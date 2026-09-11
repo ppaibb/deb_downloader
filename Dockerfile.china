@@ -1,0 +1,14 @@
+ARG ubuntu_version=22.04
+
+FROM ubuntu:$ubuntu_version
+
+# 移除官方镜像自带的自动清理机制，确保 deb 缓存保留
+RUN rm -f /etc/apt/apt.conf.d/docker-clean && \
+    if [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then \
+      sed -i 's|http://archive.ubuntu.com/|http://mirrors.tuna.tsinghua.edu.cn/|g' /etc/apt/sources.list.d/ubuntu.sources && \
+      sed -i 's|http://security.ubuntu.com/|http://mirrors.tuna.tsinghua.edu.cn/|g' /etc/apt/sources.list.d/ubuntu.sources; \
+    elif [ -f /etc/apt/sources.list ]; then \
+      sed -i 's|http://archive.ubuntu.com/|http://mirrors.tuna.tsinghua.edu.cn/|g' /etc/apt/sources.list && \
+      sed -i 's|http://security.ubuntu.com/|http://mirrors.tuna.tsinghua.edu.cn/|g' /etc/apt/sources.list; \
+    fi && \
+    apt-get update
